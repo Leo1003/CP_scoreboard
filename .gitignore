@@ -1,2 +1,17 @@
+# Rust Binary and Backup files
 /target
 **/*.rs.bk
+
+# Vim Swap files
+*.swp
+
+# Visual Studio Code Workspace
+.vscode/
+*.code-workspace
+
+# Mac Desktop Services Store
+.DS_Store
+
+# Configure File
+meta.toml
+
