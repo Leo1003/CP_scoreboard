@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 extern crate config;
 extern crate ncurses;
 #[macro_use]
