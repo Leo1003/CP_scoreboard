@@ -1,9 +1,7 @@
 use chrono::prelude::*;
 use config::{Config, File, FileFormat};
 use std::time::SystemTime;
-use crate::error::SimpleError;
-
-type SimpleResult<T> = Result<T, SimpleError>;
+use crate::error::{SimpleError, SimpleResult};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Metadata {
