@@ -82,6 +82,16 @@ impl Scoreboard {
             table.add_row(Row::new(cells));
         }
 
+        let mut footer_cells = Vec::new();
+        footer_cells.push(cell!(c->"Updated At"));
+        for prob in &self.problem_set {
+            match self.problem_cache.get(prob) {
+                Some(t) => footer_cells.push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
+                None => footer_cells.push(cell!("")),
+            }
+        }
+        table.add_row(Row::new(footer_cells));
+
         table
     }
 }
@@ -119,11 +129,13 @@ pub fn sync(board: &mut Scoreboard, token: &str) -> SimpleResult<()> {
             Some(t) => t.clone(),
             None => DateTime::<Local>::from(std::time::UNIX_EPOCH),
         };
-        for sub in &submission_list {
-            if time > sub.updated_at {
-                break;
-            }
 
+        let start_from = match submission_list.binary_search_by(|sub| sub.updated_at.cmp(&time)) {
+            Ok(p) => p + 1,
+            Err(p) => p
+        };
+
+        for sub in &submission_list[start_from..] {
             let user_record: &mut UserRecord = board.user_map.entry(sub.user_id).or_default();
             if user_record.name.is_empty() {
                 let mut respond = client
