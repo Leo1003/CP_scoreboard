@@ -1,11 +1,11 @@
 use crate::error::{SimpleError, SimpleResult};
 use chrono::prelude::*;
-use cookie::{Cookie, CookieBuilder};
 use prettytable::{Cell, Row, Table};
 use reqwest::{header, Client, Url};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub struct Scoreboard {

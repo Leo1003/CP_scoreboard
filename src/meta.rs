@@ -1,61 +1,45 @@
-use chrono::prelude::*;
-use config::{Config, File, FileFormat};
-use std::time::SystemTime;
-use crate::error::{SimpleError, SimpleResult};
+use crate::error::SimpleResult;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::ErrorKind;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Metadata {
     user_token: String,
-    last_update: DateTime<Local>,
+    problem_list: Vec<u32>,
 }
 
 impl Metadata {
     pub fn load() -> SimpleResult<Self> {
-        let mut cfg = Config::new();
-        cfg.merge(File::new("meta", FileFormat::Toml))?;
-
-        Ok(Self {
-            user_token: cfg.get_str("user_token")?.to_owned(),
-            last_update: cfg.get("last_update")?,
-        })
+        let config_str = match fs::read_to_string("meta.toml") {
+            Ok(string) => string,
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    let def_meta = Self::default();
+                    def_meta.save()?;
+                    eprintln!("Meta file not found. A default meta has been generated.");
+                }
+                return Err(e.into());
+            }
+        };
+        Ok(toml::from_str(&config_str)?)
     }
 
     pub fn get_token(&self) -> &str {
         &self.user_token
     }
 
-    pub fn get_last_update(&self) -> &DateTime<Local> {
-        &self.last_update
+    pub fn problems(&self) -> &Vec<u32> {
+        &self.problem_list
     }
 
-    pub fn set_last_update(&mut self, time: &DateTime<Local>) {
-        self.last_update = time.to_owned();
-    }
-
-    pub fn set_update_reset(&mut self) -> &DateTime<Local> {
-        self.last_update = SystemTime::UNIX_EPOCH.into();
-        self.get_last_update()
-    }
-
-    pub fn set_update_now(&mut self) -> &DateTime<Local> {
-        self.last_update = Local::now();
-        self.get_last_update()
-    }
-
-    pub fn updated(&self) -> bool {
-        self.last_update > SystemTime::UNIX_EPOCH.into()
+    pub fn problems_mut(&mut self) -> &mut Vec<u32> {
+        &mut self.problem_list
     }
 
     pub fn save(&self) -> SimpleResult<()> {
-        unimplemented!();
-    }
-}
-
-impl Default for Metadata {
-    fn default() -> Self {
-        Self {
-            user_token: String::new(),
-            last_update: SystemTime::UNIX_EPOCH.into(),
-        }
+        let config_str = toml::to_string_pretty(self)?;
+        fs::write("meta.toml", config_str)?;
+        Ok(())
     }
 }
