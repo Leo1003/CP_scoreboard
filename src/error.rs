@@ -5,7 +5,8 @@ custom_error! {pub SimpleError
     IO { source: std::io::Error } = "I/O Error",
     TomlSerialize { source: toml::ser::Error } = "TOML Serialize Error",
     TomlDeserialize { source: toml::de::Error } = "TOML Deserialize Error",
-    Json { source: serde_json::error::Error } = "JSON Error",
+    Json { source: serde_json::error::Error } = "JSON Serialize/Deserialize Error",
+    Binary { source: bincode::Error } = "Binary Serialize/Deserialize Error",
     Custom { message: String } = "{message}",
 }
 

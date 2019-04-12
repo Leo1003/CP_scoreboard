@@ -15,3 +15,5 @@
 # Configure File
 meta.toml
 
+# Cache File
+scoreboard.cache

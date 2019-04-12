@@ -25,16 +25,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("User token not set!".into());
     }
 
-    let mut board = scoreboard::Scoreboard::new();
+    let cache_path = std::path::PathBuf::from("scoreboard.cache");
+    let mut board = if cache_path.exists() {
+        scoreboard::Scoreboard::load_cache(cache_path)?
+    } else {
+        scoreboard::Scoreboard::new()
+    };
+
     for &pid in meta.problems() {
         board.add_problem(pid);
     }
     scoreboard::sync(&mut board, meta.get_token())?;
-    // if let Some(mut tty) = term::stdout() {
-    //     board.gen_table().print_term(tty.as_mut());
-    // } else {
+    board.save_cache("scoreboard.cache")?;
 
-    // }
     board.gen_table().printstd();
 
     Ok(())
