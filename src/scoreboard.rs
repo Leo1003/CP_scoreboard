@@ -56,13 +56,26 @@ impl Scoreboard {
                 .cmp(&a.ac_count(&self.problem_set))
         });
 
-        let mut head_cells = Vec::new();
-        head_cells.push(cell!(""));
+        // Generate problems' ID
+        let mut prob_cells = Vec::new();
+        prob_cells.push(cell!(""));
         for prob in &self.problem_set {
-            head_cells.push(cell!(c->prob));
+            prob_cells.push(cell!(c->prob));
         }
-        table.add_row(Row::new(head_cells));
+        table.add_row(Row::new(prob_cells.clone()));
 
+        // Generate Update Time
+        let mut update_cells = Vec::new();
+        update_cells.push(cell!(c->"Updated At"));
+        for prob in &self.problem_set {
+            match self.problem_cache.get(prob) {
+                Some(t) => update_cells.push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
+                None => update_cells.push(cell!("")),
+            }
+        }
+        table.add_row(Row::new(update_cells));
+
+        // Generate User Solving Status
         for user in &users {
             let mut cells = Vec::new();
             cells.push(cell!(c->user.name));
@@ -82,15 +95,8 @@ impl Scoreboard {
             table.add_row(Row::new(cells));
         }
 
-        let mut footer_cells = Vec::new();
-        footer_cells.push(cell!(c->"Updated At"));
-        for prob in &self.problem_set {
-            match self.problem_cache.get(prob) {
-                Some(t) => footer_cells.push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
-                None => footer_cells.push(cell!("")),
-            }
-        }
-        table.add_row(Row::new(footer_cells));
+        // Also generate one at footer
+        table.add_row(Row::new(prob_cells.clone()));
 
         table
     }
