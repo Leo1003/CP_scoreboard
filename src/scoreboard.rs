@@ -129,14 +129,14 @@ pub fn sync(board: &mut Scoreboard, token: &str) -> SimpleResult<()> {
             .iter()
             .map(|json| Submission::from_json(json))
             .collect::<SimpleResult<Vec<Submission>>>()?;
-        submission_list.sort_by(|a, b| a.updated_at.cmp(&b.updated_at));
+        submission_list.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
         let mut time = match board.problem_cache.get(prob) {
             Some(t) => t.clone(),
             None => DateTime::<Local>::from(std::time::UNIX_EPOCH),
         };
 
-        let start_from = match submission_list.binary_search_by(|sub| sub.updated_at.cmp(&time)) {
+        let start_from = match submission_list.binary_search_by(|sub| sub.created_at.cmp(&time)) {
             Ok(p) => p + 1,
             Err(p) => p
         };
@@ -164,14 +164,14 @@ pub fn sync(board: &mut Scoreboard, token: &str) -> SimpleResult<()> {
                         user_record.problem(*prob).status = SolveStatus::WrongAnswer;
                         user_record.problem(*prob).wa_count += 1;
                     }
-                    if sub.updated_at > time {
-                        time = sub.updated_at;
+                    if sub.created_at > time {
+                        time = sub.created_at;
                     }
                 }
                 10 => {
                     user_record.problem(*prob).status = SolveStatus::Accepted;
-                    if sub.updated_at > time {
-                        time = sub.updated_at;
+                    if sub.created_at > time {
+                        time = sub.created_at;
                     }
                 }
                 _ => {}
