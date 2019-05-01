@@ -1,6 +1,6 @@
 [package]
 name = "CP_scoreboard"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Leo <leo881003@gmail.com>"]
 edition = "2018"
 
@@ -14,4 +14,8 @@ serde = { version = "^1.0.90", features = ["derive"] }
 serde_json = "^1.0.39"
 bincode = "^1.1.3"
 toml = "^0.5"
+futures = "^0.1.26"
+tokio = "^0.1.19"
+tokio-timer = "^0.2.10"
 term = "^0.5"
+log = "^0.4"

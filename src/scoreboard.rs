@@ -1,13 +1,19 @@
 use crate::error::SimpleResult;
 use chrono::prelude::*;
+use futures::future::Future;
+use futures::stream::Stream;
 use prettytable::{Row, Table};
-use reqwest::{header, Client};
+use reqwest::header;
+use reqwest::header::HeaderMap;
+use reqwest::r#async::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
+use tokio_timer::clock::Clock;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Scoreboard {
@@ -69,7 +75,8 @@ impl Scoreboard {
         update_cells.push(cell!(c->"Updated At"));
         for prob in &self.problem_set {
             match self.problem_cache.get(prob) {
-                Some(t) => update_cells.push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
+                Some(t) => update_cells
+                    .push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
                 None => update_cells.push(cell!("")),
             }
         }
@@ -103,73 +110,71 @@ impl Scoreboard {
 }
 
 pub fn sync(board: &mut Scoreboard, token: &str) -> SimpleResult<()> {
-    let client = Client::new();
-    let cookie = format!("token={}", token);
-    for prob in &board.problem_set {
-        let request = client
-            .get("https://api.oj.nctu.me/submissions/")
-            .header(
-                header::COOKIE,
-                header::HeaderValue::from_bytes(cookie.as_bytes()).unwrap(),
-            )
-            .query(&[("group_id", &11.to_string())])
-            .query(&[("count", &100000.to_string())])
-            .query(&[("page", &1.to_string())])
-            .query(&[("problem_id", &prob.to_string())])
-            .build()?;
-        let mut respond = client.execute(request)?;
-        let json: Value = serde_json::from_str(&respond.text()?)?;
-        let _count = json["msg"]["count"]
-            .as_u64()
-            .ok_or("msg::count not found")? as usize;
+    let mut headers = HeaderMap::new();
+    headers.insert(header::COOKIE, format!("token={}", token).parse().unwrap());
 
-        let mut submission_list: Vec<Submission> = json["msg"]["submissions"]
-            .as_array()
-            .ok_or("msg::submissions not found")?
-            .iter()
-            .map(|json| Submission::from_json(json))
-            .collect::<SimpleResult<Vec<Submission>>>()?;
-        submission_list.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    let client = Client::builder()
+        .default_headers(headers)
+        .connect_timeout(Duration::from_secs(10))
+        .build()?;
+    let client_cloned = client.clone();
 
-        let mut time = match board.problem_cache.get(prob) {
+    let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
+
+    let problem_list: Vec<u32> = board.problem_set.iter().cloned().collect();
+    let problem_futures = futures::stream::iter_ok(problem_list)
+        .map(move |pid| {
+            client
+                .get("https://api.oj.nctu.me/submissions/")
+                .query(&[("group_id", &11.to_string())])
+                .query(&[("count", &100000.to_string())])
+                .query(&[("page", &1.to_string())])
+                .query(&[("problem_id", pid.to_string())])
+                .send()
+                .and_then(|mut res| res.json())
+                .then(
+                    move |json: Result<Value, reqwest::Error>| -> SimpleResult<(u32, Vec<Submission>)> {
+                        let json = json?;
+                        let mut submission_list: Vec<Submission> = json["msg"]["submissions"]
+                            .as_array()
+                            .ok_or("msg::submissions not found")?
+                            .iter()
+                            .map(|json| Submission::from_json(json))
+                            .collect::<SimpleResult<Vec<Submission>>>()?;
+                        submission_list.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+                        Ok((pid, submission_list))
+                    },
+                )
+        })
+        .buffer_unordered(10)
+        .collect();
+    let problems = runtime.block_on(problem_futures)?;
+    for (pid, submissions) in problems {
+        let mut time = match board.problem_cache.get(&pid) {
             Some(t) => t.clone(),
             None => DateTime::<Local>::from(std::time::UNIX_EPOCH),
         };
 
-        let start_from = match submission_list.binary_search_by(|sub| sub.created_at.cmp(&time)) {
+        let start_from = match submissions.binary_search_by(|sub| sub.created_at.cmp(&time)) {
             Ok(p) => p + 1,
-            Err(p) => p
+            Err(p) => p,
         };
 
-        for sub in &submission_list[start_from..] {
+        for sub in &submissions[start_from..] {
             let user_record: &mut UserRecord = board.user_map.entry(sub.user_id).or_default();
-            if user_record.name.is_empty() {
-                let mut respond = client
-                    .get(format!("https://api.oj.nctu.me/users/{}/", sub.user_id).as_str())
-                    .header(
-                        header::COOKIE,
-                        header::HeaderValue::from_bytes(cookie.as_bytes()).unwrap(),
-                    )
-                    .send()?;
-                let user_json: Value = serde_json::from_str(&respond.text()?)?;
-                user_record.name = user_json["msg"]["name"]
-                    .as_str()
-                    .ok_or("user::msg::name not found")?
-                    .to_owned();
-            }
 
             match sub.verdict_id {
                 4..=9 => {
-                    if user_record.problem(*prob).status != SolveStatus::Accepted {
-                        user_record.problem(*prob).status = SolveStatus::WrongAnswer;
-                        user_record.problem(*prob).wa_count += 1;
+                    if user_record.problem(pid).status != SolveStatus::Accepted {
+                        user_record.problem(pid).status = SolveStatus::WrongAnswer;
+                        user_record.problem(pid).wa_count += 1;
                     }
                     if sub.created_at > time {
                         time = sub.created_at;
                     }
                 }
                 10 => {
-                    user_record.problem(*prob).status = SolveStatus::Accepted;
+                    user_record.problem(pid).status = SolveStatus::Accepted;
                     if sub.created_at > time {
                         time = sub.created_at;
                     }
@@ -180,7 +185,7 @@ pub fn sync(board: &mut Scoreboard, token: &str) -> SimpleResult<()> {
 
         board
             .problem_cache
-            .entry(*prob)
+            .entry(pid)
             .and_modify(|t| {
                 if time > *t {
                     t.clone_from(&time);
@@ -188,6 +193,53 @@ pub fn sync(board: &mut Scoreboard, token: &str) -> SimpleResult<()> {
             })
             .or_insert(time);
     }
+
+    let client = client_cloned;
+
+    // Fetch all user's name
+    let need_update: Vec<u64> = board
+        .user_map
+        .iter()
+        .filter_map(|(&uid, user)| {
+            if user.name.is_empty() {
+                Some(uid)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let username_futures = futures::stream::iter_ok(need_update)
+        .map(move |uid| {
+            let url = format!("https://api.oj.nctu.me/users/{}/", uid);
+            debug!("-> fetching {} ...", url);
+            client
+                .get(url.as_str())
+                .send()
+                .and_then(|mut res| res.json())
+                .then(
+                    move |user_json: Result<Value, reqwest::Error>| -> SimpleResult<(u64, String)> {
+                        debug!("<- {} data: {:?}", uid, user_json);
+                        let name = user_json?["msg"]["name"]
+                            .as_str()
+                            .ok_or("user::msg::name not found")?
+                            .to_owned();
+                        Ok((uid, name))
+                    },
+                )
+        })
+        .buffer_unordered(10)
+        .collect();
+
+    let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
+    let usernames = runtime.block_on(username_futures)?;
+    for (uid, name) in usernames {
+        board.user_map.entry(uid).and_modify(|user| {
+            user.name = name;
+        });
+    }
+    runtime.shutdown_on_idle().wait().unwrap();
+    info!("Sync completed");
+
     Ok(())
 }
 
