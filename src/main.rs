@@ -39,7 +39,7 @@ fn sync_get_content(board: &mut Scoreboard, meta: &Metadata) -> SimpleResult<Fak
     board.sync(meta.get_token())?;
     board.save_cache("scoreboard.cache")?;
     let mut fterm = fake_term::FakeTerm::new();
-    board.gen_table().print_term(&mut fterm)?;
+    board.gen_table(meta.problems()).print_term(&mut fterm)?;
     Ok(fterm.into_inner())
 }
 

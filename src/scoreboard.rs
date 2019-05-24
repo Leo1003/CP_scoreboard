@@ -54,7 +54,7 @@ impl Scoreboard {
         self.problem_set.remove(&problem_id);
     }
 
-    pub fn gen_table(&self) -> Table {
+    pub fn gen_table(&self, problems: &[u32]) -> Table {
         let mut table = Table::new();
         let mut users: Vec<&UserRecord> = self.user_map.iter().map(|p| p.1).collect();
         users.sort_by(|&a, &b| {
@@ -62,10 +62,12 @@ impl Scoreboard {
                 .cmp(&a.ac_count(&self.problem_set))
         });
 
+        
+
         // Generate problems' ID
         let mut prob_cells = Vec::new();
         prob_cells.push(cell!(""));
-        for prob in &self.problem_set {
+        for prob in problems {
             prob_cells.push(cell!(c->prob));
         }
         table.add_row(Row::new(prob_cells.clone()));
@@ -73,7 +75,7 @@ impl Scoreboard {
         // Generate Update Time
         let mut update_cells = Vec::new();
         update_cells.push(cell!(c->"Updated At"));
-        for prob in &self.problem_set {
+        for prob in problems {
             match self.problem_cache.get(prob) {
                 Some(t) => update_cells
                     .push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
@@ -86,7 +88,7 @@ impl Scoreboard {
         for user in &users {
             let mut cells = Vec::new();
             cells.push(cell!(c->user.name));
-            for prob in &self.problem_set {
+            for prob in problems {
                 let p = &user.problems.get(&prob).map(|x| *x).unwrap_or_default();
                 let c = match p.status {
                     SolveStatus::Accepted => {
