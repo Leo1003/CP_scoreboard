@@ -5,6 +5,7 @@ use std::io::ErrorKind;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Metadata {
+    group_id: u32,
     user_token: String,
     problem_list: Vec<u32>,
 }
@@ -23,6 +24,10 @@ impl Metadata {
             }
         };
         Ok(toml::from_str(&config_str)?)
+    }
+
+    pub fn get_group(&self) -> u32 {
+        self.group_id
     }
 
     pub fn get_token(&self) -> &str {

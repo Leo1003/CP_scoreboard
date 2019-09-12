@@ -1,13 +1,14 @@
 [package]
-name = "CP_scoreboard"
-version = "0.5.0"
+name = "FOJ_scoreboard"
+version = "0.6.0"
 authors = ["Leo <leo881003@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 chrono = { version = "^0.4.6", features = ["serde"] }
 cursive = "^0.11.1"
-custom_error = "1.6.0"
+# custom_error makes compile error on 1.7.1
+custom_error = "=1.7.0"
 prettytable-rs = "^0.8.0"
 reqwest = "^0.9.14"
 serde = { version = "^1.0.90", features = ["derive"] }

@@ -15,5 +15,8 @@
 # Configure File
 meta.toml
 
+# Backup Files
+*.bak
+
 # Cache File
 scoreboard.cache

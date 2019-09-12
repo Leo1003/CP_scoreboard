@@ -110,7 +110,7 @@ impl Scoreboard {
         table
     }
 
-    pub fn sync(&mut self, token: &str) -> SimpleResult<()> {
+    pub fn sync(&mut self, gid: u32, token: &str) -> SimpleResult<()> {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, format!("token={}", token).parse().unwrap());
 
@@ -127,7 +127,7 @@ impl Scoreboard {
             .map(move |pid| {
                 client
                     .get("https://api.oj.nctu.me/submissions/")
-                    .query(&[("group_id", &11.to_string())])
+                    .query(&[("group_id", gid.to_string())])
                     .query(&[("count", &100000.to_string())])
                     .query(&[("page", &1.to_string())])
                     .query(&[("problem_id", pid.to_string())])
