@@ -17,6 +17,7 @@ extern crate toml;
 extern crate log;
 extern crate futures;
 
+mod api;
 mod error;
 mod fake_term;
 mod meta;
@@ -34,9 +35,13 @@ use cursive::Cursive;
 use log::LevelFilter;
 use std::error::Error;
 use term::Terminal as _;
+use tokio_timer::clock::Clock;
+use std::sync::Arc;
 
-fn sync_get_content(board: &mut Scoreboard, meta: &Metadata) -> SimpleResult<FakeTermString> {
-    board.sync(meta.get_group(), meta.get_token())?;
+fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<FakeTermString> {
+    let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
+    runtime.block_on(scoreboard::sync_rewrite(board.clone(), meta.get_group(), meta.get_token().to_owned()))?;
+
     board.save_cache("scoreboard.cache")?;
     let mut fterm = fake_term::FakeTerm::new();
     board.gen_table(meta.problems()).print_term(&mut fterm)?;
@@ -77,8 +82,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     for &pid in meta.problems() {
         board.add_problem(pid);
     }
+    let board = Arc::new(board);
 
-    let content = sync_get_content(&mut board, &meta)?;
+    let content = sync_get_content(board.clone(), &meta)?;
 
     csiv.pop_layer();
     let view = TextView::new(content).no_wrap().with_id("table");
@@ -87,13 +93,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     csiv.add_global_callback('q', |s| s.quit());
     csiv.add_global_callback('D', |s| s.toggle_debug_console());
     csiv.add_global_callback('r', move |s| {
+        let board = board.clone();
         s.add_layer(Dialog::text("Refreshing data. Please wait...").title("Refreshing").with_id("refr_dlg"));
         s.focus(&Selector::Id("refr_dlg")).unwrap();
         s.refresh();
         if let Err(_) = s
             .call_on(
                 &Selector::Id("table"),
-                |table_view: &mut TextView| match sync_get_content(&mut board, &meta) {
+                |table_view: &mut TextView| match sync_get_content(board, &meta) {
                     Ok(content) => {
                         table_view.set_content(content);
                         Ok(())
