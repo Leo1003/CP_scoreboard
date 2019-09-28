@@ -24,10 +24,7 @@ impl FojApi {
             .connect_timeout(Duration::from_secs(10))
             .build()?;
 
-        Ok(FojApi {
-            token: token,
-            client,
-        })
+        Ok(FojApi { token, client })
     }
 
     pub fn session(&self) -> impl Future<Item = Session, Error = SimpleError> {
@@ -37,29 +34,41 @@ impl FojApi {
             .and_then(|res| res.error_for_status())
             .and_then(|mut res| res.json())
             .map_err(|e| e.into())
-            .and_then(|msg: Msg<Session>| { Ok(msg.unwrap()) })
+            .and_then(|msg: Msg<Session>| Ok(msg.unwrap()))
     }
 
-    pub fn get_submission_group(&self, group_id: u32) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
+    pub fn get_submission_group(
+        &self,
+        group_id: u32,
+    ) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
         self.get_submission(group_id, 1_000_000, 1, None, None, None)
             .and_then(
-                |res: (usize, Vec<Submission>)| -> SimpleResult<Vec<Submission>> {
-                    Ok(res.1)
-                },
+                |res: (usize, Vec<Submission>)| -> SimpleResult<Vec<Submission>> { Ok(res.1) },
             )
     }
 
-    pub fn get_submission_prob(&self, group_id: u32, pid: u32) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
+    pub fn get_submission_prob(
+        &self,
+        group_id: u32,
+        pid: u32,
+    ) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
         self.get_submission(group_id, 1_000_000, 1, Some(pid), None, None)
             .and_then(
-                |res: (usize, Vec<Submission>)| -> SimpleResult<Vec<Submission>> {
-                    Ok(res.1)
-                },
+                |res: (usize, Vec<Submission>)| -> SimpleResult<Vec<Submission>> { Ok(res.1) },
             )
     }
 
-    fn get_submission(&self, group_id: u32, count: usize, page: u32, pid: Option<u32>, name: Option<&str>, verdict: Option<Verdict>) -> impl Future<Item = (usize, Vec<Submission>), Error = SimpleError> {
-        let mut builder = self.client
+    fn get_submission(
+        &self,
+        group_id: u32,
+        count: usize,
+        page: u32,
+        pid: Option<u32>,
+        name: Option<&str>,
+        verdict: Option<Verdict>,
+    ) -> impl Future<Item = (usize, Vec<Submission>), Error = SimpleError> {
+        let mut builder = self
+            .client
             .get("https://api.oj.nctu.me/submissions/")
             .query(&[("group_id", group_id.to_string())])
             .query(&[("count", count.to_string())])
@@ -78,21 +87,17 @@ impl FojApi {
             .and_then(|res| res.error_for_status())
             .and_then(|mut res| res.json())
             .map_err(|e| e.into())
-            .and_then(
-                |msg: Msg<SubmissionList>| {
-                    Ok((msg.msg.count as usize, msg.msg.submissions))
-                },
-            )
+            .and_then(|msg: Msg<SubmissionList>| Ok((msg.msg.count as usize, msg.msg.submissions)))
     }
 
-    pub fn get_user_name(&self, user_id: u64) -> impl Future<Item = String, Error = SimpleError>{
+    pub fn get_user_name(&self, user_id: u64) -> impl Future<Item = String, Error = SimpleError> {
         self.client
             .get(format!("https://api.oj.nctu.me/users/{}/", user_id).as_str())
             .send()
             .and_then(|res| res.error_for_status())
             .and_then(|mut res| res.json())
             .map_err(|e| e.into())
-            .and_then(|msg: Msg<UserName>| { Ok(msg.unwrap().name) })
+            .and_then(|msg: Msg<UserName>| Ok(msg.unwrap().name))
     }
 }
 
@@ -147,7 +152,7 @@ mod simple_datetime {
     use chrono::{DateTime, Local, TimeZone};
     use serde::{self, Deserialize, Deserializer, Serializer};
 
-    const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
+    const FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
     pub fn serialize<S>(date: &DateTime<Local>, serializer: S) -> Result<S::Ok, S::Error>
     where

@@ -30,17 +30,21 @@ use self::scoreboard::Scoreboard;
 use cursive::theme::*;
 use cursive::traits::Identifiable;
 use cursive::view::Selector;
-use cursive::views::{DebugView, ScrollView, TextView, Dialog};
+use cursive::views::{DebugView, Dialog, ScrollView, TextView};
 use cursive::Cursive;
 use log::LevelFilter;
 use std::error::Error;
+use std::sync::Arc;
 use term::Terminal as _;
 use tokio_timer::clock::Clock;
-use std::sync::Arc;
 
 fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<FakeTermString> {
     let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
-    runtime.block_on(scoreboard::sync_rewrite(board.clone(), meta.get_group(), meta.get_token().to_owned()))?;
+    runtime.block_on(scoreboard::sync(
+        board.clone(),
+        meta.get_group(),
+        meta.get_token().to_owned(),
+    ))?;
 
     board.save_cache("scoreboard.cache")?;
     let mut fterm = fake_term::FakeTerm::new();
@@ -94,24 +98,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     csiv.add_global_callback('D', |s| s.toggle_debug_console());
     csiv.add_global_callback('r', move |s| {
         let board = board.clone();
-        s.add_layer(Dialog::text("Refreshing data. Please wait...").title("Refreshing").with_id("refr_dlg"));
+        s.add_layer(
+            Dialog::text("Refreshing data. Please wait...")
+                .title("Refreshing")
+                .with_id("refr_dlg"),
+        );
         s.focus(&Selector::Id("refr_dlg")).unwrap();
         s.refresh();
-        if let Err(_) = s
-            .call_on(
-                &Selector::Id("table"),
-                |table_view: &mut TextView| match sync_get_content(board, &meta) {
-                    Ok(content) => {
-                        table_view.set_content(content);
-                        Ok(())
-                    }
-                    Err(e) => {
-                        error!("{}", e);
-                        Err(e)
-                    }
-                },
-            )
-            .unwrap()
+        if s.call_on(
+            &Selector::Id("table"),
+            |table_view: &mut TextView| match sync_get_content(board, &meta) {
+                Ok(content) => {
+                    table_view.set_content(content);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("{}", e);
+                    Err(e)
+                }
+            },
+        )
+        .unwrap()
+        .is_err()
         {
             s.show_debug_console();
         }

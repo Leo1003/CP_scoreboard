@@ -13,7 +13,7 @@ custom_error! {pub SimpleError
 impl From<&str> for SimpleError {
     fn from(err: &str) -> Self {
         SimpleError::Custom {
-            message: format!("{}", err),
+            message: err.to_string(),
         }
     }
 }

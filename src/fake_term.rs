@@ -17,9 +17,7 @@ pub struct FakeTermString {
     current_style: Style,
 }
 
-impl FakeTermString {
-
-}
+impl FakeTermString {}
 
 impl AsRef<SpannedString<Style>> for FakeTermString {
     fn as_ref(&self) -> &SpannedString<Style> {
@@ -65,7 +63,7 @@ impl FakeTerm {
             inner: FakeTermString {
                 span_string: SpannedString::new(),
                 current_style: Style::none(),
-            }
+            },
         }
     }
 }
@@ -80,7 +78,7 @@ impl Terminal for FakeTerm {
             .inner
             .current_style
             .color
-            .unwrap_or(ColorStyle::primary());
+            .unwrap_or_else(ColorStyle::primary);
         color_style.front = ColorType::Color(Color::from_256colors(color256));
         self.inner.current_style.color = Some(color_style);
         Ok(())
@@ -94,7 +92,7 @@ impl Terminal for FakeTerm {
             .inner
             .current_style
             .color
-            .unwrap_or(ColorStyle::terminal_default());
+            .unwrap_or_else(ColorStyle::terminal_default);
         color_style.back = ColorType::Color(Color::from_256colors(color256));
         self.inner.current_style.color = Some(color_style);
         Ok(())
@@ -174,7 +172,7 @@ impl Terminal for FakeTerm {
     }
 
     fn carriage_return(&mut self) -> TermResult<()> {
-        self.write("\n".as_bytes())?;
+        self.write_all("\n".as_bytes())?;
         Ok(())
     }
 
