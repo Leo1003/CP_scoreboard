@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::error::{SimpleError, SimpleResult};
 use chrono::prelude::*;
 use futures::future::Future;

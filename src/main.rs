@@ -48,6 +48,7 @@ fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<Fak
 
     board.save_cache("scoreboard.cache")?;
     let mut fterm = fake_term::FakeTerm::new();
+
     board.gen_table(meta.problems()).print_term(&mut fterm)?;
     Ok(fterm.into_inner())
 }
@@ -78,16 +79,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let cache_path = std::path::PathBuf::from("scoreboard.cache");
-    let mut board = if cache_path.exists() {
+    let board = if cache_path.exists() {
         Scoreboard::load_cache(cache_path)?
     } else {
         Scoreboard::new()
     };
-    for &pid in meta.problems() {
-        board.add_problem(pid);
-    }
-    let board = Arc::new(board);
 
+    let board = Arc::new(board);
     let content = sync_get_content(board.clone(), &meta)?;
 
     csiv.pop_layer();

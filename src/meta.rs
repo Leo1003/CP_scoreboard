@@ -7,7 +7,7 @@ use std::io::ErrorKind;
 pub struct Metadata {
     group_id: u32,
     user_token: String,
-    problem_list: Vec<u32>,
+    problem_list: Option<Vec<u32>>,
 }
 
 impl Metadata {
@@ -34,12 +34,14 @@ impl Metadata {
         &self.user_token
     }
 
-    pub fn problems(&self) -> &Vec<u32> {
-        &self.problem_list
-    }
-
-    pub fn problems_mut(&mut self) -> &mut Vec<u32> {
-        &mut self.problem_list
+    pub fn problems(&self) -> Option<&[u32]> {
+        self.problem_list.as_ref().and_then(|p| {
+            if p.is_empty() {
+                None
+            } else {
+                Some(p.as_slice())
+            }
+        })
     }
 
     pub fn save(&self) -> SimpleResult<()> {

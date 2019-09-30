@@ -4,6 +4,7 @@ use chrono::prelude::*;
 use futures::future::Future;
 use prettytable::{Row, Table};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
@@ -13,16 +14,16 @@ use std::sync::{Arc, Mutex, RwLock};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Scoreboard {
     user_map: Mutex<BTreeMap<u32, UserRecord>>,
-    problem_set: BTreeSet<u32>,
-    problem_cache: RwLock<BTreeMap<u32, DateTime<Local>>>,
+    problem_set: Mutex<BTreeSet<u32>>,
+    cache_time: RwLock<DateTime<Local>>,
 }
 
 impl Scoreboard {
     pub fn new() -> Self {
         Self {
             user_map: Mutex::new(BTreeMap::new()),
-            problem_set: BTreeSet::new(),
-            problem_cache: RwLock::new(BTreeMap::new()),
+            problem_set: Mutex::new(BTreeSet::new()),
+            cache_time: RwLock::new(DateTime::<Local>::from(std::time::UNIX_EPOCH)),
         }
     }
 
@@ -41,35 +42,36 @@ impl Scoreboard {
         Ok(())
     }
 
-    pub fn add_problem(&mut self, problem_id: u32) {
-        self.problem_set.insert(problem_id);
-    }
-
-    pub fn remove_problem(&mut self, problem_id: u32) {
-        self.problem_set.remove(&problem_id);
-    }
-
-    pub fn gen_table(&self, problems: &[u32]) -> Table {
+    pub fn gen_table(&self, problems: Option<&[u32]>) -> Table {
         let mut table = Table::new();
         let user_lock = self.user_map.lock().unwrap();
         let mut users: Vec<&UserRecord> = user_lock.iter().map(|p| p.1).collect();
-        users.sort_by(|&a, &b| {
-            b.ac_count(&self.problem_set)
-                .cmp(&a.ac_count(&self.problem_set))
-        });
+        let problems_lock = self.problem_set.lock().unwrap();
+
+        users.sort_by(|&a, &b| b.ac_count(&problems_lock).cmp(&a.ac_count(&problems_lock)));
+
+        // Generate the actual problem list
+        let prob_list: Cow<[u32]> = if let Some(problems) = problems {
+            Cow::from(problems)
+        } else {
+            let set_list: Vec<u32> = problems_lock.iter().copied().collect();
+            Cow::from(set_list)
+        };
+        debug!("{:?}", prob_list);
 
         // Generate problems' ID
         let mut prob_cells = Vec::new();
         prob_cells.push(cell!(""));
-        for prob in problems {
+        for prob in prob_list.iter() {
             prob_cells.push(cell!(c->prob));
         }
         table.add_row(Row::new(prob_cells.clone()));
 
         // Generate Update Time
+        /*
         let mut update_cells = Vec::new();
         update_cells.push(cell!(c->"Updated At"));
-        for prob in problems {
+        for prob in prob_list.iter() {
             match self.problem_cache.read().unwrap().get(prob) {
                 Some(t) => update_cells
                     .push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
@@ -77,12 +79,13 @@ impl Scoreboard {
             }
         }
         table.add_row(Row::new(update_cells));
+        */
 
         // Generate User Solving Status
         for user in &users {
             let mut cells = Vec::new();
             cells.push(cell!(c->user.name));
-            for prob in problems {
+            for prob in prob_list.iter() {
                 let p = &user.problems.get(&prob).copied().unwrap_or_default();
                 let c = match p.status {
                     SolveStatus::Accepted => cell!(Fgc->format!("{} / {}", p.status, p.wa_count + 1)),
@@ -107,7 +110,6 @@ pub fn sync(
     token: String,
 ) -> impl Future<Item = (), Error = SimpleError> + 'static {
     let board_arc = board.clone();
-    let board_arc2 = board.clone();
     futures::future::result(FojApi::new(token))
         .and_then(|foj| {
             foj.session()
@@ -120,47 +122,43 @@ pub fn sync(
         })
         .and_then(move |foj| {
             let foj_arc = foj.clone();
-            let prob_list: Vec<u32> = board_arc.problem_set.iter().cloned().collect();
-            let iter = prob_list
-                .into_iter()
-                .map(move |pid| sync_problem(board.clone(), foj_arc.clone(), gid, pid));
-            futures::future::join_all(iter).map(move |_| foj)
+            fetch_group(board.clone(), foj_arc.clone(), gid).map(move |_| foj)
         })
-        .and_then(move |foj| update_name(board_arc2, foj))
+        .and_then(move |foj| update_name(board_arc, foj))
 }
 
-fn sync_problem(
+fn fetch_group(
     board: Arc<Scoreboard>,
     foj: Arc<FojApi>,
     gid: u32,
-    pid: u32,
 ) -> impl Future<Item = (), Error = SimpleError> {
-    foj.get_submission_prob(gid, pid)
+    foj.get_submission_group(gid)
         .map(move |mut submissions| {
             submissions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-            (pid, submissions)
+            submissions
         })
-        .and_then(move |(pid, submissions)| save_submissions(board, pid, submissions))
+        .and_then(move |submissions| save_submissions(board, submissions))
 }
 
-fn save_submissions(
-    board: Arc<Scoreboard>,
-    pid: u32,
-    submissions: Vec<Submission>,
-) -> SimpleResult<()> {
-    let mut time = match board.problem_cache.read().unwrap().get(&pid) {
-        Some(t) => *t,
-        None => DateTime::<Local>::from(std::time::UNIX_EPOCH),
-    };
+fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> SimpleResult<()> {
+    let time_lock = board.cache_time.read().unwrap();
+    let mut new_time = *time_lock;
 
-    let start_from = match submissions.binary_search_by(|sub| sub.created_at.cmp(&time)) {
+    let start_from = match submissions.binary_search_by(|sub| sub.created_at.cmp(&time_lock)) {
         Ok(p) => p + 1,
         Err(p) => p,
     };
 
     let mut user_lock = board.user_map.lock().unwrap();
+    let mut problems_lock = board.problem_set.lock().unwrap();
+
     for sub in &submissions[start_from..] {
         let user_record: &mut UserRecord = user_lock.entry(sub.user_id).or_default();
+        let pid = sub.problem_id;
+
+        if !problems_lock.contains(&pid) {
+            problems_lock.insert(pid);
+        }
 
         match sub.verdict_id as u32 {
             4..=9 => {
@@ -168,31 +166,25 @@ fn save_submissions(
                     user_record.problem(pid).status = SolveStatus::WrongAnswer;
                     user_record.problem(pid).wa_count += 1;
                 }
-                if sub.created_at > time {
-                    time = sub.created_at;
+                if sub.created_at > new_time {
+                    new_time = sub.created_at;
                 }
             }
             10 => {
                 user_record.problem(pid).status = SolveStatus::Accepted;
-                if sub.created_at > time {
-                    time = sub.created_at;
+                if sub.created_at > new_time {
+                    new_time = sub.created_at;
                 }
             }
             _ => {}
         }
     }
 
-    board
-        .problem_cache
-        .write()
-        .unwrap()
-        .entry(pid)
-        .and_modify(|t| {
-            if time > *t {
-                *t = time;
-            }
-        })
-        .or_insert(time);
+    drop(time_lock);
+    let mut time_entry = board.cache_time.write().unwrap();
+    if new_time > *time_entry {
+        *time_entry = new_time;
+    }
     Ok(())
 }
 
