@@ -37,14 +37,28 @@ impl FojApi {
             .and_then(|msg: Msg<Session>| Ok(msg.unwrap()))
     }
 
+    pub fn get_problem_list(
+        &self,
+        group_id: u32,
+    ) -> impl Future<Item = Vec<Problem>, Error = SimpleError> {
+        self.client
+            .get(format!("https://api.oj.nctu.me/groups/{}/problems/", group_id).as_str())
+            .query(&[("group_id", group_id.to_string())])
+            .query(&[("count", 10000.to_string())])
+            .query(&[("page", 1.to_string())])
+            .send()
+            .and_then(|res| res.error_for_status())
+            .and_then(|mut res| res.json())
+            .map_err(|e| e.into())
+            .map(|msg: Msg<ProblemList>| msg.unwrap().data)
+    }
+
     pub fn get_submission_group(
         &self,
         group_id: u32,
     ) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
         self.get_submission(group_id, 1_000_000, 1, None, None, None)
-            .and_then(
-                |res: (usize, Vec<Submission>)| -> SimpleResult<Vec<Submission>> { Ok(res.1) },
-            )
+            .map(|res: (usize, Vec<Submission>)| res.1)
     }
 
     pub fn get_submission_prob(
@@ -53,9 +67,7 @@ impl FojApi {
         pid: u32,
     ) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
         self.get_submission(group_id, 1_000_000, 1, Some(pid), None, None)
-            .and_then(
-                |res: (usize, Vec<Submission>)| -> SimpleResult<Vec<Submission>> { Ok(res.1) },
-            )
+            .map(|res: (usize, Vec<Submission>)| res.1)
     }
 
     fn get_submission(
@@ -90,7 +102,7 @@ impl FojApi {
             .and_then(|msg: Msg<SubmissionList>| Ok((msg.msg.count as usize, msg.msg.submissions)))
     }
 
-    pub fn get_user_name(&self, user_id: u64) -> impl Future<Item = String, Error = SimpleError> {
+    pub fn get_user_name(&self, user_id: u32) -> impl Future<Item = String, Error = SimpleError> {
         self.client
             .get(format!("https://api.oj.nctu.me/users/{}/", user_id).as_str())
             .send()
@@ -112,6 +124,12 @@ pub struct Session {
 struct SubmissionList {
     count: usize,
     submissions: Vec<Submission>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ProblemList {
+    count: usize,
+    data: Vec<Problem>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize_repr, Serialize_repr)]
@@ -136,7 +154,7 @@ pub struct Submission {
     pub length: usize,
     pub verdict_id: Verdict,
     pub execute_id: u32,
-    pub user_id: u64,
+    pub user_id: u32,
     pub problem_id: u32,
     #[serde(with = "simple_datetime")]
     pub created_at: DateTime<Local>,
@@ -144,6 +162,18 @@ pub struct Submission {
     pub updated_at: DateTime<Local>,
     pub id: u64,
     pub score: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Problem {
+    pub id: u32,
+    pub status: i32,
+    pub title: String,
+    pub source: String,
+    pub user_id: u32,
+    pub visible: bool,
+    pub group_read: bool,
+    pub group_write: bool,
 }
 
 // This module is modified from serde's example

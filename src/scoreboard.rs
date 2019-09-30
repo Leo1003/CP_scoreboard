@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Scoreboard {
-    user_map: Mutex<BTreeMap<u64, UserRecord>>,
+    user_map: Mutex<BTreeMap<u32, UserRecord>>,
     problem_set: BTreeSet<u32>,
     problem_cache: RwLock<BTreeMap<u32, DateTime<Local>>>,
 }
@@ -200,7 +200,7 @@ fn update_name(
     board: Arc<Scoreboard>,
     foj: Arc<FojApi>,
 ) -> impl Future<Item = (), Error = SimpleError> {
-    let name_update_list: Vec<u64> = board
+    let name_update_list: Vec<u32> = board
         .user_map
         .lock()
         .unwrap()
@@ -239,7 +239,7 @@ impl Default for Scoreboard {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct UserRecord {
-    id: u64,
+    id: u32,
     name: String,
     problems: BTreeMap<u32, ProblemCell>,
 }
