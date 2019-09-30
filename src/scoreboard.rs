@@ -84,17 +84,27 @@ impl Scoreboard {
         // Generate User Solving Status
         for user in &users {
             let mut cells = Vec::new();
+            let mut should_display = false;
             cells.push(cell!(c->user.name));
             for prob in prob_list.iter() {
                 let p = &user.problems.get(&prob).copied().unwrap_or_default();
+                // Make all 'NS' not display
                 let c = match p.status {
-                    SolveStatus::Accepted => cell!(Fgc->format!("{} / {}", p.status, p.wa_count + 1)),
-                    SolveStatus::WrongAnswer => cell!(Frc->format!("{} / {}", p.status, p.wa_count)),
+                    SolveStatus::Accepted => {
+                        should_display = true;
+                        cell!(Fgc->format!("{} / {}", p.status, p.wa_count + 1))
+                    }
+                    SolveStatus::WrongAnswer => {
+                        should_display = true;
+                        cell!(Frc->format!("{} / {}", p.status, p.wa_count))
+                    }
                     SolveStatus::None => cell!(FDc->format!("{}", p.status)),
                 };
                 cells.push(c);
             }
-            table.add_row(Row::new(cells));
+            if should_display {
+                table.add_row(Row::new(cells));
+            }
         }
 
         // Also generate one at footer
