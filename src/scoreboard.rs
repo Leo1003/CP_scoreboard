@@ -2,7 +2,7 @@ use crate::api::*;
 use crate::error::*;
 use chrono::prelude::*;
 use futures::future::Future;
-use prettytable::{Row, Table};
+use prettytable::{format::Alignment, Cell, Row, Table};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -68,18 +68,18 @@ impl Scoreboard {
         table.add_row(Row::new(prob_cells.clone()));
 
         // Generate Update Time
-        /*
-        let mut update_cells = Vec::new();
-        update_cells.push(cell!(c->"Updated At"));
-        for prob in prob_list.iter() {
-            match self.problem_cache.read().unwrap().get(prob) {
-                Some(t) => update_cells
-                    .push(cell!(c->format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")))),
-                None => update_cells.push(cell!("")),
-            }
-        }
-        table.add_row(Row::new(update_cells));
-        */
+        let mut update_row = Vec::new();
+        update_row.push(cell!(c->"Updated At"));
+
+        let t = self.cache_time.read().unwrap();
+        let mut update_cell = Cell::new_align(
+            format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")).as_str(),
+            Alignment::CENTER,
+        );
+        update_cell.set_hspan(prob_list.len());
+        update_row.push(update_cell);
+
+        table.add_row(Row::new(update_row));
 
         // Generate User Solving Status
         for user in &users {
