@@ -2,10 +2,9 @@
 
 use crate::error::{SimpleError, SimpleResult};
 use chrono::prelude::*;
-use futures::future::Future;
 use reqwest::header;
 use reqwest::header::HeaderMap;
-use reqwest::r#async::Client;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use std::time::Duration;
@@ -29,50 +28,58 @@ impl FojApi {
         Ok(FojApi { token, client })
     }
 
-    pub fn session(&self) -> impl Future<Item = Session, Error = SimpleError> {
-        self.client
+    pub async fn session(&self) -> Result<Session, SimpleError> {
+        let session = self
+            .client
             .get("https://api.oj.nctu.me/session/")
             .send()
-            .and_then(|res| res.error_for_status())
-            .and_then(|mut res| res.json())
-            .map_err(|e| e.into())
-            .and_then(|msg: Msg<Session>| Ok(msg.unwrap()))
+            .await?
+            .error_for_status()?
+            .json::<Msg<Session>>()
+            .await?
+            .inner();
+        Ok(session)
     }
 
-    pub fn get_problem_list(
-        &self,
-        group_id: u32,
-    ) -> impl Future<Item = Vec<Problem>, Error = SimpleError> {
-        self.client
+    pub async fn get_problem_list(&self, group_id: u32) -> Result<Vec<Problem>, SimpleError> {
+        let problist = self
+            .client
             .get(format!("https://api.oj.nctu.me/groups/{}/problems/", group_id).as_str())
             .query(&[("group_id", group_id.to_string())])
             .query(&[("count", 10000.to_string())])
             .query(&[("page", 1.to_string())])
             .send()
-            .and_then(|res| res.error_for_status())
-            .and_then(|mut res| res.json())
-            .map_err(|e| e.into())
-            .map(|msg: Msg<ProblemList>| msg.unwrap().data)
+            .await?
+            .error_for_status()?
+            .json::<Msg<ProblemList>>()
+            .await?
+            .inner();
+
+        Ok(problist.data)
     }
 
-    pub fn get_submission_group(
+    pub async fn get_submission_group(
         &self,
         group_id: u32,
-    ) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
-        self.get_submission(group_id, 1_000_000, 1, None, None, None)
-            .map(|res: (usize, Vec<Submission>)| res.1)
+    ) -> Result<Vec<Submission>, SimpleError> {
+        Ok(self
+            .get_submission(group_id, 1_000_000, 1, None, None, None)
+            .await?
+            .1)
     }
 
-    pub fn get_submission_prob(
+    pub async fn get_submission_prob(
         &self,
         group_id: u32,
         pid: u32,
-    ) -> impl Future<Item = Vec<Submission>, Error = SimpleError> {
-        self.get_submission(group_id, 1_000_000, 1, Some(pid), None, None)
-            .map(|res: (usize, Vec<Submission>)| res.1)
+    ) -> Result<Vec<Submission>, SimpleError> {
+        Ok(self
+            .get_submission(group_id, 1_000_000, 1, Some(pid), None, None)
+            .await?
+            .1)
     }
 
-    fn get_submission(
+    async fn get_submission(
         &self,
         group_id: u32,
         count: usize,
@@ -80,7 +87,7 @@ impl FojApi {
         pid: Option<u32>,
         name: Option<&str>,
         verdict: Option<Verdict>,
-    ) -> impl Future<Item = (usize, Vec<Submission>), Error = SimpleError> {
+    ) -> Result<(usize, Vec<Submission>), SimpleError> {
         let mut builder = self
             .client
             .get("https://api.oj.nctu.me/submissions/")
@@ -96,22 +103,27 @@ impl FojApi {
         if let Some(verdict) = verdict {
             builder = builder.query(&[("verdict_id", (verdict as u32).to_string())])
         }
-        builder
+        let sublist = builder
             .send()
-            .and_then(|res| res.error_for_status())
-            .and_then(|mut res| res.json())
-            .map_err(|e| e.into())
-            .and_then(|msg: Msg<SubmissionList>| Ok((msg.msg.count as usize, msg.msg.submissions)))
+            .await?
+            .error_for_status()?
+            .json::<Msg<SubmissionList>>()
+            .await?
+            .inner();
+        Ok((sublist.count as usize, sublist.submissions))
     }
 
-    pub fn get_user_name(&self, user_id: u32) -> impl Future<Item = String, Error = SimpleError> {
-        self.client
+    pub async fn get_user_name(&self, user_id: u32) -> Result<String, SimpleError> {
+        let user = self
+            .client
             .get(format!("https://api.oj.nctu.me/users/{}/", user_id).as_str())
             .send()
-            .and_then(|res| res.error_for_status())
-            .and_then(|mut res| res.json())
-            .map_err(|e| e.into())
-            .and_then(|msg: Msg<UserName>| Ok(msg.unwrap().name))
+            .await?
+            .error_for_status()?
+            .json::<Msg<UserName>>()
+            .await?
+            .inner();
+        Ok(user.name)
     }
 }
 
@@ -217,7 +229,7 @@ struct Msg<M> {
 }
 
 impl<M> Msg<M> {
-    pub fn unwrap(self) -> M {
+    pub fn inner(self) -> M {
         self.msg
     }
 }

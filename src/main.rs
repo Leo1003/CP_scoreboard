@@ -11,7 +11,6 @@ extern crate reqwest;
 extern crate serde;
 extern crate term;
 extern crate tokio;
-extern crate tokio_timer;
 extern crate toml;
 #[macro_use]
 extern crate log;
@@ -36,15 +35,15 @@ use log::LevelFilter;
 use std::error::Error;
 use std::sync::Arc;
 use term::Terminal as _;
-use tokio_timer::clock::Clock;
 
 fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<FakeTermString> {
-    let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
-    runtime.block_on(scoreboard::sync(
-        board.clone(),
-        meta.get_group(),
-        meta.get_token().to_owned(),
-    ))?;
+    //let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(
+        board
+            .clone()
+            .fetch(meta.get_group(), meta.get_token().to_owned()),
+    )?;
 
     board.save_cache("scoreboard.cache")?;
     let mut fterm = fake_term::FakeTerm::new();

@@ -1,7 +1,6 @@
 use crate::api::*;
 use crate::error::*;
 use chrono::prelude::*;
-use futures::future::Future;
 use prettytable::{format::Alignment, Cell, Row, Table};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -108,46 +107,38 @@ impl Scoreboard {
         }
 
         // Also generate one at footer
-        table.add_row(Row::new(prob_cells.clone()));
+        table.add_row(Row::new(prob_cells));
 
         table
     }
+
+    pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> Result<(), SimpleError> {
+        let foj = Arc::new(FojApi::new(token)?);
+
+        // Authentication
+        let session = foj
+            .session()
+            .await
+            .map_err::<SimpleError, _>(|_| "Authentication Failed!".into())?;
+        info!("Authentication Succuss!");
+        trace!("{:?}", session);
+
+        // Fetch
+        fetch_group(self.clone(), foj.clone(), gid).await?;
+        fetch_names(self, foj).await?;
+        Ok(())
+    }
 }
 
-pub fn sync(
-    board: Arc<Scoreboard>,
-    gid: u32,
-    token: String,
-) -> impl Future<Item = (), Error = SimpleError> + 'static {
-    let board_arc = board.clone();
-    futures::future::result(FojApi::new(token))
-        .and_then(|foj| {
-            foj.session()
-                .map(|session| {
-                    info!("Authentication Succuss!");
-                    trace!("{:?}", session);
-                    Arc::new(foj)
-                })
-                .map_err(|_| "Authentication Failed!".into())
-        })
-        .and_then(move |foj| {
-            let foj_arc = foj.clone();
-            fetch_group(board.clone(), foj_arc.clone(), gid).map(move |_| foj)
-        })
-        .and_then(move |foj| update_name(board_arc, foj))
-}
-
-fn fetch_group(
+async fn fetch_group(
     board: Arc<Scoreboard>,
     foj: Arc<FojApi>,
     gid: u32,
-) -> impl Future<Item = (), Error = SimpleError> {
-    foj.get_submission_group(gid)
-        .map(move |mut submissions| {
-            submissions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-            submissions
-        })
-        .and_then(move |submissions| save_submissions(board, submissions))
+) -> Result<(), SimpleError> {
+    let mut submissions = foj.get_submission_group(gid).await?;
+    submissions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    save_submissions(board, submissions)?;
+    Ok(())
 }
 
 fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> SimpleResult<()> {
@@ -198,10 +189,7 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Sim
     Ok(())
 }
 
-fn update_name(
-    board: Arc<Scoreboard>,
-    foj: Arc<FojApi>,
-) -> impl Future<Item = (), Error = SimpleError> {
+async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<()> {
     let name_update_list: Vec<u32> = board
         .user_map
         .lock()
@@ -215,22 +203,26 @@ fn update_name(
             }
         })
         .collect();
-    let futures_iter = name_update_list.into_iter().map(move |uid| {
-        let board = board.clone();
-        foj.get_user_name(uid)
-            .map(move |name| (uid, name))
-            .map(move |(uid, name)| {
-                board
-                    .user_map
-                    .lock()
-                    .unwrap()
-                    .entry(uid)
-                    .and_modify(|user| {
-                        user.name = name;
-                    });
-            })
-    });
-    futures::future::join_all(futures_iter).map(|_| ())
+    let futures_iter = name_update_list
+        .into_iter()
+        .map(|uid| update_name(board.clone(), foj.clone(), uid));
+
+    let results: Vec<SimpleResult<()>> = futures::future::join_all(futures_iter).await;
+    results.into_iter().collect::<SimpleResult<()>>()?;
+    Ok(())
+}
+
+async fn update_name(board: Arc<Scoreboard>, foj: Arc<FojApi>, uid: u32) -> SimpleResult<()> {
+    let name = foj.get_user_name(uid).await?;
+    board
+        .user_map
+        .lock()
+        .unwrap()
+        .entry(uid)
+        .and_modify(|user| {
+            user.name = name;
+        });
+    Ok(())
 }
 
 impl Default for Scoreboard {
