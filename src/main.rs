@@ -1,20 +1,13 @@
 #![allow(non_snake_case)]
 
-extern crate chrono;
 #[macro_use]
 extern crate custom_error;
-extern crate cursive;
-#[macro_use]
-extern crate prettytable;
-extern crate bincode;
-extern crate reqwest;
-extern crate serde;
-extern crate term;
-extern crate tokio;
-extern crate toml;
 #[macro_use]
 extern crate log;
-extern crate futures;
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate prettytable;
 
 mod api;
 mod error;
@@ -28,16 +21,27 @@ use self::meta::Metadata;
 use self::scoreboard::Scoreboard;
 use cursive::theme::*;
 use cursive::traits::Identifiable;
-use cursive::view::Selector;
-use cursive::views::{DebugView, Dialog, ScrollView, TextView};
+use cursive::views::{ScrollView, TextView};
 use cursive::Cursive;
-use log::LevelFilter;
 use std::error::Error;
 use std::sync::Arc;
 use term::Terminal as _;
 
+lazy_static! {
+    static ref CURSIVE_THEME: Theme = {
+        let mut palette = Palette::default();
+        palette[PaletteColor::Background] = Color::Dark(BaseColor::Black);
+        palette[PaletteColor::Primary] = Color::Dark(BaseColor::White);
+        palette[PaletteColor::View] = Color::Dark(BaseColor::Black);
+        palette[PaletteColor::Shadow] = Color::Light(BaseColor::Black);
+        let mut theme = Theme::default();
+        theme.shadow = false;
+        theme.palette = palette;
+        theme
+    };
+}
+
 fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<FakeTermString> {
-    //let mut runtime = tokio::runtime::Builder::new().clock(Clock::new()).build()?;
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(
         board
@@ -52,25 +56,29 @@ fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<Fak
     Ok(fterm.into_inner())
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let mut palette = Palette::default();
-    palette[PaletteColor::Background] = Color::Dark(BaseColor::Black);
-    palette[PaletteColor::Primary] = Color::Dark(BaseColor::White);
-    palette[PaletteColor::View] = Color::Dark(BaseColor::Black);
-    palette[PaletteColor::Shadow] = Color::Light(BaseColor::Black);
-    let mut theme = Theme::default();
-    theme.shadow = false;
-    theme.palette = palette;
-
+fn show_content(content: FakeTermString) -> bool {
     let mut csiv = Cursive::default();
-    csiv.set_theme(theme);
-    cursive::logger::init();
-    if cfg!(debug_assertions) {
-        log::set_max_level(LevelFilter::Debug);
+    csiv.set_theme(CURSIVE_THEME.clone());
+    let view = TextView::new(content).no_wrap().with_id("table");
+    csiv.add_fullscreen_layer(ScrollView::new(view).scroll_x(true).show_scrollbars(false));
+
+    csiv.set_user_data(false);
+    csiv.add_global_callback('q', |s| s.quit());
+    csiv.add_global_callback('r', |s| {
+        *s.user_data().unwrap() = true;
+        s.quit();
+    });
+    csiv.run();
+    csiv.take_user_data().unwrap()
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let env = if cfg!(debug_assertions) {
+        env_logger::Env::new().default_filter_or("FOJ_scoreboard=debug")
     } else {
-        log::set_max_level(LevelFilter::Info);
-    }
-    csiv.add_layer(DebugView::new());
+        env_logger::Env::new().default_filter_or("FOJ_scoreboard=info")
+    };
+    env_logger::Builder::from_env(env).init();
 
     let meta = Metadata::load()?;
     if meta.get_token().is_empty() {
@@ -85,44 +93,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let board = Arc::new(board);
-    let content = sync_get_content(board.clone(), &meta)?;
 
-    csiv.pop_layer();
-    let view = TextView::new(content).no_wrap().with_id("table");
-    csiv.add_fullscreen_layer(ScrollView::new(view).scroll_x(true).show_scrollbars(false));
-
-    csiv.add_global_callback('q', |s| s.quit());
-    csiv.add_global_callback('D', |s| s.toggle_debug_console());
-    csiv.add_global_callback('r', move |s| {
-        let board = board.clone();
-        s.add_layer(
-            Dialog::text("Refreshing data. Please wait...")
-                .title("Refreshing")
-                .with_id("refr_dlg"),
-        );
-        s.focus(&Selector::Id("refr_dlg")).unwrap();
-        s.refresh();
-        if s.call_on(
-            &Selector::Id("table"),
-            |table_view: &mut TextView| match sync_get_content(board, &meta) {
-                Ok(content) => {
-                    table_view.set_content(content);
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("{}", e);
-                    Err(e)
-                }
-            },
-        )
-        .unwrap()
-        .is_err()
-        {
-            s.show_debug_console();
-        }
-        s.pop_layer();
-    });
-    csiv.run();
+    let mut running = true;
+    while running {
+        info!("Refreshing data. Please wait...");
+        let content = sync_get_content(board.clone(), &meta)?;
+        debug!("Showing content...");
+        running = show_content(content);
+    }
 
     Ok(())
 }
