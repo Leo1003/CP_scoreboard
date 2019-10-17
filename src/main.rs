@@ -15,7 +15,7 @@ mod fake_term;
 mod meta;
 mod scoreboard;
 
-use self::error::SimpleResult;
+use self::error::*;
 use self::fake_term::FakeTermString;
 use self::meta::Metadata;
 use self::scoreboard::Scoreboard;

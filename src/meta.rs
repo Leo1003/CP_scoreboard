@@ -1,4 +1,4 @@
-use crate::error::SimpleResult;
+use crate::error::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::ErrorKind;

@@ -112,7 +112,7 @@ impl Scoreboard {
         table
     }
 
-    pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> Result<(), SimpleError> {
+    pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> SimpleResult<()> {
         let foj = Arc::new(FojApi::new(token)?);
 
         // Authentication
@@ -130,11 +130,7 @@ impl Scoreboard {
     }
 }
 
-async fn fetch_group(
-    board: Arc<Scoreboard>,
-    foj: Arc<FojApi>,
-    gid: u32,
-) -> Result<(), SimpleError> {
+async fn fetch_group(board: Arc<Scoreboard>, foj: Arc<FojApi>, gid: u32) -> SimpleResult<()> {
     let mut submissions = foj.get_submission_group(gid).await?;
     submissions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
     save_submissions(board, submissions)?;
