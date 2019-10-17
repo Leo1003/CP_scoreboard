@@ -73,6 +73,7 @@ fn show_content(content: FakeTermString) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Setup Logger
     let env = if cfg!(debug_assertions) {
         env_logger::Env::new().default_filter_or("FOJ_scoreboard=debug")
     } else {
@@ -80,26 +81,35 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     env_logger::Builder::from_env(env).init();
 
+    // Load Metadata
     let meta = Metadata::load()?;
+    trace!("Loaded metadata: {:?}", &meta);
     if meta.get_token().is_empty() {
         return Err("User token not set!".into());
     }
 
+    // Load Board Cache
     let cache_path = std::path::PathBuf::from("scoreboard.cache");
     let board = if cache_path.exists() {
+        if log_enabled!(log::Level::Debug) {
+            debug!("Found cache file: {:?}", cache_path.canonicalize());
+        }
         Scoreboard::load_cache(cache_path)?
     } else {
+        debug!("Cache not found, creating a new one...");
         Scoreboard::new()
     };
 
+    // Wrap in Arc
     let board = Arc::new(board);
 
-    let mut running = true;
-    while running {
+    // Refresh Loop
+    let mut refreshing = true;
+    while refreshing {
         info!("Refreshing data. Please wait...");
         let content = sync_get_content(board.clone(), &meta)?;
         debug!("Showing content...");
-        running = show_content(content);
+        refreshing = show_content(content);
     }
 
     Ok(())

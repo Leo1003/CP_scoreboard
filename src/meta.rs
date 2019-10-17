@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::ErrorKind;
 
+const META_FILE: &str = "meta.toml";
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Metadata {
     group_id: u32,
@@ -12,13 +14,16 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn load() -> SimpleResult<Self> {
-        let config_str = match fs::read_to_string("meta.toml") {
+        if log_enabled!(log::Level::Debug) {
+            debug!("Loading meta file: {:?}", fs::canonicalize(META_FILE));
+        }
+        let config_str = match fs::read_to_string(META_FILE) {
             Ok(string) => string,
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
                     let def_meta = Self::default();
                     def_meta.save()?;
-                    eprintln!("Meta file not found. A default meta has been generated.");
+                    warn!("Meta file not found. A default meta has been generated.");
                 }
                 return Err(e.into());
             }
@@ -46,7 +51,7 @@ impl Metadata {
 
     pub fn save(&self) -> SimpleResult<()> {
         let config_str = toml::to_string_pretty(self)?;
-        fs::write("meta.toml", config_str)?;
+        fs::write(META_FILE, config_str)?;
         Ok(())
     }
 }

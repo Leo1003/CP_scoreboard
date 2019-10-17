@@ -28,6 +28,7 @@ impl Scoreboard {
 
     pub fn load_cache<P: AsRef<Path>>(path: P) -> SimpleResult<Self> {
         let f = fs::OpenOptions::new().read(true).open(path)?;
+        trace!("Deserializing file: {:?}", &f);
         Ok(bincode::deserialize_from(f)?)
     }
 
@@ -37,26 +38,29 @@ impl Scoreboard {
             .truncate(true)
             .create(true)
             .open(path)?;
+        trace!("Serializing file: {:?}", &f);
         bincode::serialize_into(f, self)?;
         Ok(())
     }
 
     pub fn gen_table(&self, problems: Option<&[u32]>) -> Table {
+        debug!("Generating table...");
         let mut table = Table::new();
         let user_lock = self.user_map.lock().unwrap();
         let mut users: Vec<&UserRecord> = user_lock.iter().map(|p| p.1).collect();
         let problems_lock = self.problem_set.lock().unwrap();
 
+        // TODO: AC count should only include display problems
         users.sort_by(|&a, &b| b.ac_count(&problems_lock).cmp(&a.ac_count(&problems_lock)));
 
-        // Generate the actual problem list
+        // Generate the displaying problem list
         let prob_list: Cow<[u32]> = if let Some(problems) = problems {
             Cow::from(problems)
         } else {
             let set_list: Vec<u32> = problems_lock.iter().copied().collect();
             Cow::from(set_list)
         };
-        debug!("{:?}", prob_list);
+        debug!("Displaying problem list: {:?}", prob_list);
 
         // Generate problems' ID
         let mut prob_cells = Vec::new();
@@ -106,13 +110,14 @@ impl Scoreboard {
             }
         }
 
-        // Also generate one at footer
+        // Also generate a column at the footer
         table.add_row(Row::new(prob_cells));
 
         table
     }
 
     pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> SimpleResult<()> {
+        debug!("Starting to fetch submission...");
         let foj = Arc::new(FojApi::new(token)?);
 
         // Authentication
@@ -120,8 +125,8 @@ impl Scoreboard {
             .session()
             .await
             .map_err::<SimpleError, _>(|_| "Authentication Failed!".into())?;
-        info!("Authentication Succuss!");
-        trace!("{:?}", session);
+        debug!("Authentication Succuss!");
+        trace!("User session: {:?}", session);
 
         // Fetch
         fetch_group(self.clone(), foj.clone(), gid).await?;
@@ -131,7 +136,9 @@ impl Scoreboard {
 }
 
 async fn fetch_group(board: Arc<Scoreboard>, foj: Arc<FojApi>, gid: u32) -> SimpleResult<()> {
+    trace!("Fetching submissions in group {}...", gid);
     let mut submissions = foj.get_submission_group(gid).await?;
+    trace!("Fetched {} submissions.", submissions.len());
     submissions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
     save_submissions(board, submissions)?;
     Ok(())
@@ -141,10 +148,13 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Sim
     let time_lock = board.cache_time.read().unwrap();
     let mut new_time = *time_lock;
 
+    trace!("Filter submissions created before: {}", time_lock);
     let start_from = match submissions.binary_search_by(|sub| sub.created_at.cmp(&time_lock)) {
         Ok(p) => p + 1,
         Err(p) => p,
     };
+    trace!("Starting from submission: {:?}", submissions.get(start_from).map(|sub| sub.id));
+    trace!("Submissions to be processed: {}", &submissions[start_from..].len());
 
     let mut user_lock = board.user_map.lock().unwrap();
     let mut problems_lock = board.problem_set.lock().unwrap();
@@ -186,22 +196,21 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Sim
 }
 
 async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<()> {
-    let name_update_list: Vec<u32> = board
+    let futures_iter: Vec<_> = board
         .user_map
         .lock()
         .unwrap()
         .iter()
         .filter_map(|(&uid, user)| {
             if user.name.is_empty() {
-                Some(uid)
+                Some(update_name(board.clone(), foj.clone(), uid))
             } else {
                 None
             }
-        })
-        .collect();
-    let futures_iter = name_update_list
-        .into_iter()
-        .map(|uid| update_name(board.clone(), foj.clone(), uid));
+        }).collect();
+    if log_enabled!(log::Level::Trace) {
+        trace!("There are {} users' name is going to be updated.", futures_iter.len());
+    }
 
     let results: Vec<SimpleResult<()>> = futures::future::join_all(futures_iter).await;
     results.into_iter().collect::<SimpleResult<()>>()?;
@@ -209,7 +218,9 @@ async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<(
 }
 
 async fn update_name(board: Arc<Scoreboard>, foj: Arc<FojApi>, uid: u32) -> SimpleResult<()> {
+    trace!("Fetching the name of user {}...", uid);
     let name = foj.get_user_name(uid).await?;
+    trace!("user {} => {}", uid, &name);
     board
         .user_map
         .lock()
