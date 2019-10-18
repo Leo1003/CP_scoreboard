@@ -1,6 +1,7 @@
 use crate::api::*;
 use crate::error::*;
 use chrono::prelude::*;
+use futures::stream::{FuturesUnordered, StreamExt as _};
 use prettytable::{format::Alignment, Cell, Row, Table};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -153,8 +154,14 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Sim
         Ok(p) => p + 1,
         Err(p) => p,
     };
-    trace!("Starting from submission: {:?}", submissions.get(start_from).map(|sub| sub.id));
-    trace!("Submissions to be processed: {}", &submissions[start_from..].len());
+    trace!(
+        "Starting from submission: {:?}",
+        submissions.get(start_from).map(|sub| sub.id)
+    );
+    trace!(
+        "Submissions to be processed: {}",
+        &submissions[start_from..].len()
+    );
 
     let mut user_lock = board.user_map.lock().unwrap();
     let mut problems_lock = board.problem_set.lock().unwrap();
@@ -196,7 +203,7 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Sim
 }
 
 async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<()> {
-    let futures_iter: Vec<_> = board
+    let futures_iter: FuturesUnordered<_> = board
         .user_map
         .lock()
         .unwrap()
@@ -207,12 +214,16 @@ async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<(
             } else {
                 None
             }
-        }).collect();
+        })
+        .collect();
     if log_enabled!(log::Level::Trace) {
-        trace!("There are {} users' name is going to be updated.", futures_iter.len());
+        trace!(
+            "There are {} users' name going to be updated.",
+            futures_iter.len()
+        );
     }
 
-    let results: Vec<SimpleResult<()>> = futures::future::join_all(futures_iter).await;
+    let results: Vec<SimpleResult<()>> = futures_iter.collect().await;
     results.into_iter().collect::<SimpleResult<()>>()?;
     Ok(())
 }
