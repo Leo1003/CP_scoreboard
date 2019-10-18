@@ -4,7 +4,6 @@ use chrono::prelude::*;
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use prettytable::{format::Alignment, Cell, Row, Table};
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
@@ -44,29 +43,25 @@ impl Scoreboard {
         Ok(())
     }
 
-    pub fn gen_table(&self, problems: Option<&[u32]>) -> Table {
+    pub fn probset(&self) -> BTreeSet<u32> {
+        self.problem_set.lock().unwrap().clone()
+    }
+
+    pub fn gen_table(&self, problems: &BTreeSet<u32>) -> Table {
         debug!("Generating table...");
         let mut table = Table::new();
         let user_lock = self.user_map.lock().unwrap();
         let mut users: Vec<&UserRecord> = user_lock.iter().map(|p| p.1).collect();
-        let problems_lock = self.problem_set.lock().unwrap();
-
-        // TODO: AC count should only include display problems
-        users.sort_by(|&a, &b| b.ac_count(&problems_lock).cmp(&a.ac_count(&problems_lock)));
 
         // Generate the displaying problem list
-        let prob_list: Cow<[u32]> = if let Some(problems) = problems {
-            Cow::from(problems)
-        } else {
-            let set_list: Vec<u32> = problems_lock.iter().copied().collect();
-            Cow::from(set_list)
-        };
-        debug!("Displaying problem list: {:?}", prob_list);
+        debug!("Displaying problem list: {:?}", problems);
+
+        users.sort_by(|&a, &b| b.ac_count(problems).cmp(&a.ac_count(problems)));
 
         // Generate problems' ID
         let mut prob_cells = Vec::new();
         prob_cells.push(cell!(""));
-        for prob in prob_list.iter() {
+        for prob in problems.iter() {
             prob_cells.push(cell!(c->prob));
         }
         table.add_row(Row::new(prob_cells.clone()));
@@ -80,7 +75,7 @@ impl Scoreboard {
             format!("{}\n{}", t.format("%Y-%m-%d"), t.format("%H:%M:%S")).as_str(),
             Alignment::CENTER,
         );
-        update_cell.set_hspan(prob_list.len());
+        update_cell.set_hspan(problems.len());
         update_row.push(update_cell);
 
         table.add_row(Row::new(update_row));
@@ -88,11 +83,11 @@ impl Scoreboard {
         // Generate User Solving Status
         for user in &users {
             let mut cells = Vec::new();
+            // Hide all 'NS' user
             let mut should_display = false;
             cells.push(cell!(c->user.name));
-            for prob in prob_list.iter() {
+            for prob in problems.iter() {
                 let p = &user.problems.get(&prob).copied().unwrap_or_default();
-                // Make all 'NS' not display
                 let c = match p.status {
                     SolveStatus::Accepted => {
                         should_display = true;

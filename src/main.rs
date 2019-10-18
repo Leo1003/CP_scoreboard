@@ -17,7 +17,7 @@ mod scoreboard;
 
 use self::error::*;
 use self::fake_term::FakeTermString;
-use self::meta::Metadata;
+use self::meta::*;
 use self::scoreboard::Scoreboard;
 use cursive::theme::*;
 use cursive::traits::Identifiable;
@@ -52,7 +52,15 @@ fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<Fak
     board.save_cache("scoreboard.cache")?;
     let mut fterm = fake_term::FakeTerm::new();
 
-    board.gen_table(meta.problems()).print_term(&mut fterm)?;
+    let mut probset = board.probset();
+    if let Some(metaprob) = meta.problems() {
+        probset = match meta.list_type() {
+            ListType::BlackList => &probset - metaprob,
+            ListType::WhiteList => &probset & metaprob,
+        };
+    }
+
+    board.gen_table(&probset).print_term(&mut fterm)?;
     Ok(fterm.into_inner())
 }
 

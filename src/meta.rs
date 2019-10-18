@@ -1,5 +1,6 @@
 use crate::error::*;
 use serde::{Deserialize, Serialize};
+use std::collections::*;
 use std::fs;
 use std::io::ErrorKind;
 
@@ -9,7 +10,20 @@ const META_FILE: &str = "meta.toml";
 pub struct Metadata {
     group_id: u32,
     user_token: String,
-    problem_list: Option<Vec<u32>>,
+    problem_list_type: ListType,
+    problem_list: Option<BTreeSet<u32>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ListType {
+    BlackList,
+    WhiteList,
+}
+
+impl Default for ListType {
+    fn default() -> Self {
+        Self::BlackList
+    }
 }
 
 impl Metadata {
@@ -39,12 +53,16 @@ impl Metadata {
         &self.user_token
     }
 
-    pub fn problems(&self) -> Option<&[u32]> {
+    pub fn list_type(&self) -> ListType {
+        self.problem_list_type
+    }
+
+    pub fn problems(&self) -> Option<&BTreeSet<u32>> {
         self.problem_list.as_ref().and_then(|p| {
             if p.is_empty() {
                 None
             } else {
-                Some(p.as_slice())
+                Some(p)
             }
         })
     }
