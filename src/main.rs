@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 #[macro_use]
-extern crate custom_error;
+extern crate anyhow;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -10,15 +10,14 @@ extern crate lazy_static;
 extern crate prettytable;
 
 mod api;
-mod error;
 mod fake_term;
 mod meta;
 mod scoreboard;
 
-use self::error::*;
 use self::fake_term::FakeTermString;
 use self::meta::*;
 use self::scoreboard::Scoreboard;
+use anyhow::Result as AnyResult;
 use cursive::theme::*;
 use cursive::traits::Identifiable;
 use cursive::views::{ScrollView, TextView};
@@ -41,7 +40,7 @@ lazy_static! {
     };
 }
 
-fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> SimpleResult<FakeTermString> {
+fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> AnyResult<FakeTermString> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(
         board

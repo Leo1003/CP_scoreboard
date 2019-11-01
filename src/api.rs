@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::*;
+use anyhow::Result as AnyResult;
 use chrono::prelude::*;
 use reqwest::header;
 use reqwest::header::HeaderMap;
@@ -16,7 +16,7 @@ pub struct FojApi {
 }
 
 impl FojApi {
-    pub fn new(token: String) -> SimpleResult<Self> {
+    pub fn new(token: String) -> AnyResult<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, format!("token={}", token).parse().unwrap());
 
@@ -28,7 +28,7 @@ impl FojApi {
         Ok(FojApi { token, client })
     }
 
-    pub async fn session(&self) -> SimpleResult<Session> {
+    pub async fn session(&self) -> AnyResult<Session> {
         let session = self
             .client
             .get("https://api.oj.nctu.me/session/")
@@ -41,7 +41,7 @@ impl FojApi {
         Ok(session)
     }
 
-    pub async fn get_problem_list(&self, group_id: u32) -> SimpleResult<Vec<Problem>> {
+    pub async fn get_problem_list(&self, group_id: u32) -> AnyResult<Vec<Problem>> {
         let problist = self
             .client
             .get(format!("https://api.oj.nctu.me/groups/{}/problems/", group_id).as_str())
@@ -58,7 +58,7 @@ impl FojApi {
         Ok(problist.data)
     }
 
-    pub async fn get_submission_group(&self, group_id: u32) -> SimpleResult<Vec<Submission>> {
+    pub async fn get_submission_group(&self, group_id: u32) -> AnyResult<Vec<Submission>> {
         Ok(self
             .get_submission(group_id, 1_000_000, 1, None, None, None)
             .await?
@@ -69,7 +69,7 @@ impl FojApi {
         &self,
         group_id: u32,
         pid: u32,
-    ) -> SimpleResult<Vec<Submission>> {
+    ) -> AnyResult<Vec<Submission>> {
         Ok(self
             .get_submission(group_id, 1_000_000, 1, Some(pid), None, None)
             .await?
@@ -84,7 +84,7 @@ impl FojApi {
         pid: Option<u32>,
         name: Option<&str>,
         verdict: Option<Verdict>,
-    ) -> SimpleResult<(usize, Vec<Submission>)> {
+    ) -> AnyResult<(usize, Vec<Submission>)> {
         let mut builder = self
             .client
             .get("https://api.oj.nctu.me/submissions/")
@@ -110,7 +110,7 @@ impl FojApi {
         Ok((sublist.count as usize, sublist.submissions))
     }
 
-    pub async fn get_user_name(&self, user_id: u32) -> SimpleResult<String> {
+    pub async fn get_user_name(&self, user_id: u32) -> AnyResult<String> {
         let user = self
             .client
             .get(format!("https://api.oj.nctu.me/users/{}/", user_id).as_str())

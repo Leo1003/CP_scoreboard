@@ -1,5 +1,5 @@
 use crate::api::*;
-use crate::error::*;
+use anyhow::Result as AnyResult;
 use chrono::prelude::*;
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use prettytable::{format::Alignment, Cell, Row, Table};
@@ -26,13 +26,13 @@ impl Scoreboard {
         }
     }
 
-    pub fn load_cache<P: AsRef<Path>>(path: P) -> SimpleResult<Self> {
+    pub fn load_cache<P: AsRef<Path>>(path: P) -> AnyResult<Self> {
         let f = fs::OpenOptions::new().read(true).open(path)?;
         trace!("Deserializing file: {:?}", &f);
         Ok(bincode::deserialize_from(f)?)
     }
 
-    pub fn save_cache<P: AsRef<Path>>(&self, path: P) -> SimpleResult<()> {
+    pub fn save_cache<P: AsRef<Path>>(&self, path: P) -> AnyResult<()> {
         let f = fs::OpenOptions::new()
             .write(true)
             .truncate(true)
@@ -112,7 +112,7 @@ impl Scoreboard {
         table
     }
 
-    pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> SimpleResult<()> {
+    pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> AnyResult<()> {
         debug!("Starting to fetch submission...");
         let foj = Arc::new(FojApi::new(token)?);
 
@@ -120,7 +120,7 @@ impl Scoreboard {
         let session = foj
             .session()
             .await
-            .map_err::<SimpleError, _>(|_| "Authentication Failed!".into())?;
+            .map_err::<anyhow::Error, _>(|_| anyhow!("Authentication Failed!"))?;
         debug!("Authentication Succuss!");
         trace!("User session: {:?}", session);
 
@@ -131,7 +131,7 @@ impl Scoreboard {
     }
 }
 
-async fn fetch_group(board: Arc<Scoreboard>, foj: Arc<FojApi>, gid: u32) -> SimpleResult<()> {
+async fn fetch_group(board: Arc<Scoreboard>, foj: Arc<FojApi>, gid: u32) -> AnyResult<()> {
     trace!("Fetching submissions in group {}...", gid);
     let mut submissions = foj.get_submission_group(gid).await?;
     trace!("Fetched {} submissions.", submissions.len());
@@ -140,7 +140,7 @@ async fn fetch_group(board: Arc<Scoreboard>, foj: Arc<FojApi>, gid: u32) -> Simp
     Ok(())
 }
 
-fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> SimpleResult<()> {
+fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> AnyResult<()> {
     let time_lock = board.cache_time.read().unwrap();
     let mut new_time = *time_lock;
 
@@ -197,7 +197,7 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Sim
     Ok(())
 }
 
-async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<()> {
+async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> AnyResult<()> {
     let futures_iter: FuturesUnordered<_> = board
         .user_map
         .lock()
@@ -218,12 +218,12 @@ async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> SimpleResult<(
         );
     }
 
-    let results: Vec<SimpleResult<()>> = futures_iter.collect().await;
-    results.into_iter().collect::<SimpleResult<()>>()?;
+    let results: Vec<AnyResult<()>> = futures_iter.collect().await;
+    results.into_iter().collect::<AnyResult<()>>()?;
     Ok(())
 }
 
-async fn update_name(board: Arc<Scoreboard>, foj: Arc<FojApi>, uid: u32) -> SimpleResult<()> {
+async fn update_name(board: Arc<Scoreboard>, foj: Arc<FojApi>, uid: u32) -> AnyResult<()> {
     trace!("Fetching the name of user {}...", uid);
     let name = foj.get_user_name(uid).await?;
     trace!("user {} => {}", uid, &name);

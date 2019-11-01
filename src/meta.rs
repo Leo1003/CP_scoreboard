@@ -1,5 +1,5 @@
-use crate::error::*;
 use serde::{Deserialize, Serialize};
+use anyhow::Result as AnyResult;
 use std::collections::*;
 use std::fs;
 use std::io::ErrorKind;
@@ -27,7 +27,7 @@ impl Default for ListType {
 }
 
 impl Metadata {
-    pub fn load() -> SimpleResult<Self> {
+    pub fn load() -> AnyResult<Self> {
         if log_enabled!(log::Level::Debug) {
             debug!("Loading meta file: {:?}", fs::canonicalize(META_FILE));
         }
@@ -67,7 +67,7 @@ impl Metadata {
         })
     }
 
-    pub fn save(&self) -> SimpleResult<()> {
+    pub fn save(&self) -> AnyResult<()> {
         let config_str = toml::to_string_pretty(self)?;
         fs::write(META_FILE, config_str)?;
         Ok(())
