@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
 use anyhow::Result as AnyResult;
+use async_std::fs;
+use futures::TryFutureExt;
+use serde::{Deserialize, Serialize};
 use std::collections::*;
-use std::fs;
 use std::io::ErrorKind;
 
 const META_FILE: &str = "meta.toml";
@@ -27,21 +28,22 @@ impl Default for ListType {
 }
 
 impl Metadata {
-    pub fn load() -> AnyResult<Self> {
+    pub async fn load() -> AnyResult<Self> {
         if log_enabled!(log::Level::Debug) {
-            debug!("Loading meta file: {:?}", fs::canonicalize(META_FILE));
+            debug!("Loading meta file: {:?}", fs::canonicalize(META_FILE).await);
         }
-        let config_str = match fs::read_to_string(META_FILE) {
-            Ok(string) => string,
-            Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
-                    let def_meta = Self::default();
-                    def_meta.save()?;
-                    warn!("Meta file not found. A default meta has been generated.");
+        let config_str = fs::read_to_string(META_FILE)
+            .or_else(|e| {
+                async {
+                    if e.kind() == ErrorKind::NotFound {
+                        let def_meta = Self::default();
+                        def_meta.save().await.unwrap();
+                        warn!("Meta file not found. A default meta has been generated.");
+                    }
+                    Err(anyhow::Error::new(e))
                 }
-                return Err(e.into());
-            }
-        };
+            })
+            .await?;
         Ok(toml::from_str(&config_str)?)
     }
 
@@ -58,18 +60,14 @@ impl Metadata {
     }
 
     pub fn problems(&self) -> Option<&BTreeSet<u32>> {
-        self.problem_list.as_ref().and_then(|p| {
-            if p.is_empty() {
-                None
-            } else {
-                Some(p)
-            }
-        })
+        self.problem_list
+            .as_ref()
+            .and_then(|p| if p.is_empty() { None } else { Some(p) })
     }
 
-    pub fn save(&self) -> AnyResult<()> {
+    pub async fn save(&self) -> AnyResult<()> {
         let config_str = toml::to_string_pretty(self)?;
-        fs::write(META_FILE, config_str)?;
+        fs::write(META_FILE, config_str).await?;
         Ok(())
     }
 }

@@ -40,7 +40,7 @@ lazy_static! {
     };
 }
 
-fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> AnyResult<FakeTermString> {
+async fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> AnyResult<FakeTermString> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(
         board
@@ -48,7 +48,7 @@ fn sync_get_content(board: Arc<Scoreboard>, meta: &Metadata) -> AnyResult<FakeTe
             .fetch(meta.get_group(), meta.get_token().to_owned()),
     )?;
 
-    board.save_cache("scoreboard.cache")?;
+    board.save_cache("scoreboard.cache").await?;
     let mut fterm = fake_term::FakeTerm::new();
 
     let mut probset = board.probset();
@@ -79,7 +79,8 @@ fn show_content(content: FakeTermString) -> bool {
     csiv.take_user_data().unwrap()
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[async_std::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     // Setup Logger
     let env = if cfg!(debug_assertions) {
         env_logger::Env::new().default_filter_or("FOJ_scoreboard=debug")
@@ -89,7 +90,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     env_logger::Builder::from_env(env).init();
 
     // Load Metadata
-    let meta = Metadata::load()?;
+    let meta = Metadata::load().await?;
     trace!("Loaded metadata: {:?}", &meta);
     if meta.get_token().is_empty() {
         return Err("User token not set!".into());
@@ -101,7 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if log_enabled!(log::Level::Debug) {
             debug!("Found cache file: {:?}", cache_path.canonicalize());
         }
-        Scoreboard::load_cache(cache_path)?
+        Scoreboard::load_cache(cache_path).await?
     } else {
         debug!("Cache not found, creating a new one...");
         Scoreboard::new()
@@ -114,7 +115,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut refreshing = true;
     while refreshing {
         info!("Refreshing data. Please wait...");
-        let content = sync_get_content(board.clone(), &meta)?;
+        let content = sync_get_content(board.clone(), &meta).await?;
         debug!("Showing content...");
         refreshing = show_content(content);
     }

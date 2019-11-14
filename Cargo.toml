@@ -5,19 +5,20 @@ authors = ["Leo <leo881003@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+async-std = { version = "1.0.1", features = ["attributes"] }
+anyhow = "1.0.19"
 chrono = { version = "0.4.9", features = ["serde"] }
 cursive = "0.13.0"
 prettytable-rs = "0.8.0"
 reqwest = { version = "0.10.0-alpha.1", features = ["gzip", "json"] }
 tokio = "0.2.0-alpha.6"
-futures-preview = "0.3.0-alpha.19"
+futures-preview = "=0.3.0-alpha.19"
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = "1.0.41"
 bincode = "1.2.0"
 toml = "0.5.5"
-term = "^0.5"
+term = "0.5"
 log = "0.4.8"
 serde_repr = "0.1.5"
 env_logger = "0.7.1"
 lazy_static = "1.4.0"
-anyhow = "1.0.18"

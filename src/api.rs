@@ -65,11 +65,7 @@ impl FojApi {
             .1)
     }
 
-    pub async fn get_submission_prob(
-        &self,
-        group_id: u32,
-        pid: u32,
-    ) -> AnyResult<Vec<Submission>> {
+    pub async fn get_submission_prob(&self, group_id: u32, pid: u32) -> AnyResult<Vec<Submission>> {
         Ok(self
             .get_submission(group_id, 1_000_000, 1, Some(pid), None, None)
             .await?

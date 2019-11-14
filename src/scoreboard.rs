@@ -1,13 +1,14 @@
 use crate::api::*;
 use anyhow::Result as AnyResult;
+use async_std::fs;
+use async_std::path::Path;
+use async_std::prelude::*;
 use chrono::prelude::*;
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use prettytable::{format::Alignment, Cell, Row, Table};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::fs;
-use std::path::Path;
 use std::sync::{Arc, Mutex, RwLock};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,20 +27,25 @@ impl Scoreboard {
         }
     }
 
-    pub fn load_cache<P: AsRef<Path>>(path: P) -> AnyResult<Self> {
-        let f = fs::OpenOptions::new().read(true).open(path)?;
+    pub async fn load_cache<P: AsRef<Path>>(path: P) -> AnyResult<Self> {
+        let mut f = fs::OpenOptions::new().read(true).open(path).await?;
         trace!("Deserializing file: {:?}", &f);
-        Ok(bincode::deserialize_from(f)?)
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).await?;
+        Ok(bincode::deserialize_from(buf.as_slice())?)
     }
 
-    pub fn save_cache<P: AsRef<Path>>(&self, path: P) -> AnyResult<()> {
-        let f = fs::OpenOptions::new()
+    pub async fn save_cache<P: AsRef<Path>>(&self, path: P) -> AnyResult<()> {
+        let mut f = fs::OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
-            .open(path)?;
+            .open(path)
+            .await?;
         trace!("Serializing file: {:?}", &f);
-        bincode::serialize_into(f, self)?;
+        let mut buf = Vec::new();
+        bincode::serialize_into(&mut buf, self)?;
+        f.write_all(&buf).await?;
         Ok(())
     }
 
