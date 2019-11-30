@@ -32,7 +32,7 @@ impl Scoreboard {
         trace!("Deserializing file: {:?}", &f);
         let mut buf = Vec::new();
         f.read_to_end(&mut buf).await?;
-        Ok(bincode::deserialize_from(buf.as_slice())?)
+        Ok(bincode::deserialize(&buf)?)
     }
 
     pub async fn save_cache<P: AsRef<Path>>(&self, path: P) -> AnyResult<()> {
@@ -43,8 +43,7 @@ impl Scoreboard {
             .open(path)
             .await?;
         trace!("Serializing file: {:?}", &f);
-        let mut buf = Vec::new();
-        bincode::serialize_into(&mut buf, self)?;
+        let buf = bincode::serialize(self)?;
         f.write_all(&buf).await?;
         Ok(())
     }
