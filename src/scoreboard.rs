@@ -119,7 +119,7 @@ impl Scoreboard {
 
     pub async fn fetch(self: Arc<Self>, gid: u32, token: String) -> AnyResult<()> {
         debug!("Starting to fetch submission...");
-        let foj = Arc::new(FojApi::new(token)?);
+        let foj = FojApi::new(token)?;
 
         // Authentication
         let session = foj
@@ -136,7 +136,7 @@ impl Scoreboard {
     }
 }
 
-async fn fetch_group(board: Arc<Scoreboard>, foj: Arc<FojApi>, gid: u32) -> AnyResult<()> {
+async fn fetch_group(board: Arc<Scoreboard>, foj: FojApi, gid: u32) -> AnyResult<()> {
     trace!("Fetching submissions in group {}...", gid);
     let mut submissions = foj.get_submission_group(gid).await?;
     trace!("Fetched {} submissions.", submissions.len());
@@ -202,7 +202,7 @@ fn save_submissions(board: Arc<Scoreboard>, submissions: Vec<Submission>) -> Any
     Ok(())
 }
 
-async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> AnyResult<()> {
+async fn fetch_names(board: Arc<Scoreboard>, foj: FojApi) -> AnyResult<()> {
     let futures_iter: FuturesUnordered<_> = board
         .user_map
         .lock()
@@ -228,7 +228,7 @@ async fn fetch_names(board: Arc<Scoreboard>, foj: Arc<FojApi>) -> AnyResult<()> 
     Ok(())
 }
 
-async fn update_name(board: Arc<Scoreboard>, foj: Arc<FojApi>, uid: u32) -> AnyResult<()> {
+async fn update_name(board: Arc<Scoreboard>, foj: FojApi, uid: u32) -> AnyResult<()> {
     trace!("Fetching the name of user {}...", uid);
     let name = foj.get_user_name(uid).await?;
     trace!("user {} => {}", uid, &name);

@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FojApi {
-    token: String,
     client: Client,
 }
 
@@ -25,7 +24,7 @@ impl FojApi {
             .connect_timeout(Duration::from_secs(10))
             .build()?;
 
-        Ok(FojApi { token, client })
+        Ok(FojApi { client })
     }
 
     pub async fn session(&self) -> AnyResult<Session> {
